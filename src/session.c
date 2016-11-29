@@ -242,6 +242,17 @@ ssize_t yamux_session_read(struct yamux_session* session)
 
                     return 0;
                 }
+                else if (f.flags & yamux_frame_ack)
+                {
+                    if (s->state != yamux_stream_syn_sent)
+                        return EPROTO;
+
+                    s->state = yamux_stream_est;
+
+                    return 0;
+                }
+                else if (f.flags)
+                    return EPROTO;
 
                 return yamux_stream_process(s, &f, session->sock);
             }
@@ -254,6 +265,8 @@ ssize_t yamux_session_read(struct yamux_session* session)
 
             if (session->new_stream_fn)
                 session->new_stream_fn(session, st);
+
+            st->state = yamux_stream_syn_recv;
         }
         else
             return EPROTO;
