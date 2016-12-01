@@ -13,8 +13,9 @@
 
 ssize_t yamux_stream_init(struct yamux_stream* stream)
 {
-    if (!stream || stream->state != yamux_stream_inited || stream->session->closed)
-        return EINVAL;
+    if (!stream || stream->state != yamux_stream_inited || stream->session->closed) {
+        return -EINVAL;
+    }
 
     struct yamux_frame f = (struct yamux_frame){
         .version  = YAMUX_VERSION,
@@ -32,7 +33,7 @@ ssize_t yamux_stream_init(struct yamux_stream* stream)
 ssize_t yamux_stream_close(struct yamux_stream* stream)
 {
     if (!stream || stream->state != yamux_stream_est || stream->session->closed)
-        return EINVAL;
+        return -EINVAL;
 
     struct yamux_frame f = (struct yamux_frame){
         .version  = YAMUX_VERSION,
@@ -50,7 +51,7 @@ ssize_t yamux_stream_close(struct yamux_stream* stream)
 ssize_t yamux_stream_reset(struct yamux_stream* stream)
 {
     if (!stream || stream->session->closed)
-        return EINVAL;
+        return -EINVAL;
 
     struct yamux_frame f = (struct yamux_frame){
         .version  = YAMUX_VERSION,
@@ -85,7 +86,7 @@ ssize_t yamux_stream_window_update(struct yamux_stream* stream, int32_t delta)
 {
     if (!stream || stream->state == yamux_stream_closed
             || stream->state == yamux_stream_closing || stream->session->closed)
-        return EINVAL;
+        return -EINVAL;
 
     struct yamux_session* s = stream->session;
 
@@ -107,7 +108,7 @@ ssize_t yamux_stream_write(struct yamux_stream* stream, uint32_t data_length, vo
 {
     if (!((size_t)stream | (size_t)data_) || stream->state == yamux_stream_closed
             || stream->state == yamux_stream_closing || stream->session->closed)
-        return EINVAL;
+        return -EINVAL;
 
     char* data = (char*)data_;
 
@@ -145,7 +146,7 @@ ssize_t yamux_stream_write(struct yamux_stream* stream, uint32_t data_length, vo
         data += adv;
     }
 
-    return 0;
+    return data_end - (char*)data_;
 }
 
 void yamux_stream_free(struct yamux_stream* stream)

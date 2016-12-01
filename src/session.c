@@ -8,13 +8,15 @@
 #include "session.h"
 #include "stream.h"
 
+static struct yamux_config dcfg = YAMUX_DEFAULT_CONFIG;
+
 struct yamux_session* yamux_session_new(struct yamux_config* config, int sock, enum yamux_session_type type)
 {
     if (!sock)
         return NULL;
 
     if (!config)
-        *config = YAMUX_DEFAULT_CONFIG;
+        config = &dcfg;
 
     size_t ab = config->accept_backlog;
 
@@ -132,10 +134,14 @@ struct yamux_stream* yamux_new_stream(struct yamux_session* session, yamux_strea
         return NULL;
 
     ss = &session->streams[session->cap_streams];
+
+    if (ss->alive)
+        return NULL;
+
     session->cap_streams++;
 
     ss->alive = true;
-    st = ss->stream;
+    st = ss->stream = malloc(sizeof(struct yamux_stream));
 
 FOUND:;
 
@@ -162,9 +168,10 @@ ssize_t yamux_session_read(struct yamux_session* session)
     struct yamux_frame f;
 
     ssize_t r = recv(session->sock, &f, sizeof(struct yamux_frame), 0);
-    decode_frame(&f);
     if (r)
         return r;
+
+    decode_frame(&f);
 
     if (f.version != YAMUX_VERSION)
         return ENOTSUP; // can't send a Go Away message, either

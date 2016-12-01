@@ -10,13 +10,25 @@
 
 #include "yamux.h"
 
+static void on_read(struct yamux_stream* stream, uint32_t data_len, void* data)
+{
+    char d[data_len + 1];
+    d[data_len] = 0;
+    memcpy(d, data, data_len);
+
+    printf("%s", d);
+};
+
 int main(int argc, char* argv[]) {
     int sock;
+    int e;
+    ssize_t ee;
 
     // init sock
     if ((sock = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)
     {
-        printf("socket() failed with %i\n", -sock);
+        e = errno;
+        printf("socket() failed with %i\n", e);
 
         goto END;
     }
@@ -25,12 +37,12 @@ int main(int argc, char* argv[]) {
 
     memset(&addr, 0, sizeof(struct sockaddr_in));
     addr.sin_family      = AF_INET;
-    addr.sin_addr.s_addr = inet_addr("192.168.0.212");
+    addr.sin_addr.s_addr = inet_addr("127.0.0.1");
     addr.sin_port        = htons(1337);
 
     if (connect(sock, (struct sockaddr*)&addr, sizeof(struct sockaddr_in)) < 0)
     {
-        int e = errno;
+        e = errno;
         printf("connect() failed with %i\n", e);
 
         goto FREE_SOCK;
@@ -55,25 +67,30 @@ int main(int argc, char* argv[]) {
         goto FREE_YAMUX;
     }
 
-    if (yamux_stream_init(strm))
+    strm->read_fn = on_read;
+
+    if ((ee = yamux_stream_init(strm)) < 0)
     {
-        printf("yamux_stream_init() failed\n");
+        e = errno;
+        printf("yamux_stream_init() failed with %i, errno=%i\n", (int)-ee, e);
 
         goto KILL_STRM;
     }
 
     char str[] = "hello\n";
-    if (yamux_stream_write(strm, 6, str))
+    if ((ee = yamux_stream_write(strm, 6, str)) < 0)
     {
-        printf("yamux_stream_write() failed\n");
+        e = errno;
+        printf("yamux_stream_write() failed with %i, errno=%i\n", (int)-ee, e);
 
         goto KILL_STRM;
     }
 
     for (;;) {
-        if (yamux_session_read(sess))
+        if ((ee = yamux_session_read(sess)) < 0)
         {
-            printf("yamux_session_read() failed\n");
+            e = errno;
+            printf("yamux_session_read() failed with %i, errno=%i\n", (int)-ee, e);
             goto KILL_STRM;
         }
 
