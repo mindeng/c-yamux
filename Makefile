@@ -8,16 +8,25 @@ AR=ar
 
 OUTNAME=yamux.a
 OUTPATH=$(BIN_DIR)/$(OUTNAME)
+TSTNAME=ytest
+TSTPATH=$(BIN_DIR)/$(TSTNAME)
 
 CCFLAGS=-I$(INC_DIR) -Weverything -Wno-vla
 LIBS=
 
 all: makeobjdirs
-all: $(OUTPATH)
+all: $(OUTPATH) $(TSTPATH)
+
+$(TSTPATH): $(OUTPATH) $(OBJ_DIR)/main.o
+	$(CC) -o $@ \
+        $(OBJ_DIR)/frame.o $(OBJ_DIR)/session.o $(OBJ_DIR)/stream.o \
+        $(OBJ_DIR)/main.o \
+        $(CCFLAGS) $(LIBS)
 
 $(OUTPATH): \
     $(OBJ_DIR)/frame.o $(OBJ_DIR)/session.o $(OBJ_DIR)/stream.o
-	$(AR) rcs $@ `find $(OBJ_DIR) -type f -name "*.o"`
+	$(AR) rcs $@ \
+        $(OBJ_DIR)/frame.o $(OBJ_DIR)/session.o $(OBJ_DIR)/stream.o
 
 debug: CCFLAGS += -DDEBUG -g
 debug: all
@@ -34,11 +43,12 @@ cleanbins:
 
 $(OBJ_DIR)/frame.o: $(SRC_DIR)/frame.c
 	$(CC) -c $< -o $@ $(CCFLAGS) $(LIBS)
-
 $(OBJ_DIR)/session.o: $(SRC_DIR)/session.c
 	$(CC) -c $< -o $@ $(CCFLAGS) $(LIBS)
-
 $(OBJ_DIR)/stream.o: $(SRC_DIR)/stream.c
+	$(CC) -c $< -o $@ $(CCFLAGS) $(LIBS)
+
+$(OBJ_DIR)/main.o: $(SRC_DIR)/main.c
 	$(CC) -c $< -o $@ $(CCFLAGS) $(LIBS)
 
 clean: cleanbins

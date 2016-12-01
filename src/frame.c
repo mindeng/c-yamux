@@ -1,5 +1,7 @@
 
 #include <stdbool.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
 
 #include "frame.h"
 
@@ -22,47 +24,22 @@ static void set_eness()
         eness = big;
 }
 
-static void do16(uint16_t* pv)
-{
-    if (eness == big)
-        return;
-
-    uint16_t v = *pv;
-    *pv = (uint16_t)((
-          ((v & 0xFF00) >> 8)
-        | ((v & 0x00FF) << 8)
-        ) & 0xFFFF);
-}
-static void do32(uint32_t* pv)
-{
-    if (eness == big)
-        return;
-
-    uint32_t v = *pv;
-    *pv =
-          ((v & 0xFF000000) >> 24)
-        | ((v & 0x00FF0000) >>  8)
-        | ((v & 0x0000FF00) <<  8)
-        | ((v & 0x000000FF) << 24)
-        ;
-}
-
 void encode_frame(struct yamux_frame* frame)
 {
     if (eness == unk)
         set_eness();
 
-    do16(&frame->flags   );
-    do32(&frame->streamid);
-    do32(&frame->length  );
+    frame->flags    = htons(frame->flags   );
+    frame->streamid = htonl(frame->streamid);
+    frame->length   = htonl(frame->length  );
 }
 void decode_frame(struct yamux_frame* frame)
 {
     if (eness == unk)
         set_eness();
 
-    do16(&frame->flags   );
-    do32(&frame->streamid);
-    do32(&frame->length  );
+    frame->flags    = ntohs(frame->flags   );
+    frame->streamid = ntohl(frame->streamid);
+    frame->length   = ntohl(frame->length  );
 }
 
