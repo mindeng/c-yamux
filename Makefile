@@ -22,6 +22,8 @@ TSTPATH=$(BIN_DIR)/$(TSTNAME)
 CCFLAGS=-I$(INC_DIR) -W$(WALL) -Wno-vla
 LIBS=
 
+default: release
+
 all: makeobjdirs
 all: $(OUTPATH) $(TSTPATH)
 
