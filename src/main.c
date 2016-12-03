@@ -75,7 +75,7 @@ int main(int argc, char* argv[])
     if (initr < 0)
     {
         e = errno;
-        printf("init failed with %i, errno=%i\n", (int)-initr);
+        printf("init failed with %i, errno=%i\n", (int)-initr, e);
 
         goto FREE_SOCK;
     }

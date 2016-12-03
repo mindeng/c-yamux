@@ -3,11 +3,16 @@ SRC_DIR=src
 OBJ_DIR=obj
 BIN_DIR=bin
 
-#CC=gcc
-CC=clang
+ifeq ($(CC),)
+	CC=clang
+endif
 AR=ar
-#WALL=all
-WALL=everything
+
+ifeq ($(CC),clang)
+	WALL=everything
+else
+	WALL=all
+endif
 
 OUTNAME=yamux.a
 OUTPATH=$(BIN_DIR)/$(OUTNAME)
