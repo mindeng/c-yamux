@@ -1,7 +1,8 @@
 # c-yamux
 
 A C port of yamux. Unlike the Go library, it doesn't start a new thread
-for every stream, nor does it automatically send a ping.
+(or something equivalent to a goroutine) to check for incoming messages
+, nor does it automatically ping every so often.
 
 ## Usage
 
@@ -17,6 +18,12 @@ yamux_stream_init(st); // sends the handshake
 
 char str[] = "hello\n";
 yamux_stream_write(st, strlen(str), str);
+
+// read incoming messages
+for (;;)
+{
+    yamux_session_read(se);
+}
 ```
 
 ## TODO
