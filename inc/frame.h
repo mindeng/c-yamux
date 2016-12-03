@@ -20,12 +20,12 @@ enum yamux_frame_type
 };
 enum yamux_frame_flags
 {
-    yamux_frame_nil = 0x00,
+    yamux_frame_nil = 0x0000,
 
-    yamux_frame_syn = 0x01,
-    yamux_frame_ack = 0x02,
-    yamux_frame_fin = 0x04,
-    yamux_frame_rst = 0x08
+    yamux_frame_syn = 0x0001,
+    yamux_frame_ack = 0x0002,
+    yamux_frame_fin = 0x0004,
+    yamux_frame_rst = 0x0008
 };
 
 #pragma pack(push,1)

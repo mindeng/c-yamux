@@ -73,9 +73,6 @@ inline ssize_t yamux_session_go_away(struct yamux_session* session, enum yamux_e
 
 ssize_t yamux_session_ping(struct yamux_session* session, uint32_t value, bool pong);
 
-// does not init the stream
-struct yamux_stream* yamux_new_stream(struct yamux_session* session, yamux_streamid id);
-
 // defers to stream read handlers
 ssize_t yamux_session_read(struct yamux_session* session);
 

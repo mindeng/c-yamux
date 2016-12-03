@@ -3,15 +3,18 @@ SRC_DIR=src
 OBJ_DIR=obj
 BIN_DIR=bin
 
-CC=gcc
+#CC=gcc
+CC=clang
 AR=ar
+#WALL=all
+WALL=everything
 
 OUTNAME=yamux.a
 OUTPATH=$(BIN_DIR)/$(OUTNAME)
 TSTNAME=ytest
 TSTPATH=$(BIN_DIR)/$(TSTNAME)
 
-CCFLAGS=-I$(INC_DIR) -Wall -Wno-vla
+CCFLAGS=-I$(INC_DIR) -W$(WALL) -Wno-vla
 LIBS=
 
 all: makeobjdirs

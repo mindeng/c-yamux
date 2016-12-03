@@ -41,6 +41,9 @@ struct yamux_stream
     uint32_t window_size;
 };
 
+// does not init the stream
+struct yamux_stream* yamux_stream_new(struct yamux_session* session, yamux_streamid id);
+
 // not obligatory, SYN is sent by yamux_stream_write when the stream
 // isn't initialised anyway
 ssize_t yamux_stream_init (struct yamux_stream* stream);

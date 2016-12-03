@@ -4,6 +4,7 @@
 #include <sys/socket.h>
 #include <errno.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 #include "session.h"
 #include "stream.h"
@@ -103,78 +104,23 @@ ssize_t yamux_session_ping(struct yamux_session* session, uint32_t value, bool p
     return send(session->sock, &f, sizeof(struct yamux_frame), 0);
 }
 
-struct yamux_stream* yamux_new_stream(struct yamux_session* session, yamux_streamid id)
-{
-    if (!session)
-        return NULL;
-
-    if (!id)
-    {
-        id = session->nextid;
-        session->nextid += 2;
-    }
-
-    struct yamux_stream* st = NULL;
-    struct yamux_session_stream* ss;
-
-    if (session->num_streams != session->cap_streams)
-        for (size_t i = 0; i < session->cap_streams; ++i)
-        {
-            ss = &session->streams[i];
-
-            if (!ss->alive)
-            {
-                st = ss->stream;
-                ss->alive = true;
-                goto FOUND;
-            }
-        }
-
-    if (session->cap_streams == session->config->accept_backlog)
-        return NULL;
-
-    ss = &session->streams[session->cap_streams];
-
-    if (ss->alive)
-        return NULL;
-
-    session->cap_streams++;
-
-    ss->alive = true;
-    st = ss->stream = malloc(sizeof(struct yamux_stream));
-
-FOUND:;
-
-    struct yamux_stream nst = (struct yamux_stream){
-        .id          = id,
-        .session     = session,
-        .state       = yamux_stream_inited,
-        .window_size = YAMUX_DEFAULT_WINDOW,
-
-        .read_fn = NULL,
-        .fin_fn  = NULL,
-        .rst_fn  = NULL
-    };
-    *st = nst;
-
-    return st;
-}
-
 ssize_t yamux_session_read(struct yamux_session* session)
 {
     if (!session || session->closed)
-        return EINVAL;
+        return -EINVAL;
 
     struct yamux_frame f;
 
     ssize_t r = recv(session->sock, &f, sizeof(struct yamux_frame), 0);
-    if (r)
-        return r;
+    if (r != sizeof(struct yamux_frame))
+        return -1;
 
     decode_frame(&f);
 
+    //printf("v%X got frame %X %X for stream %u with len %u\n", f.version, f.type, f.flags, f.streamid, f.length);
+
     if (f.version != YAMUX_VERSION)
-        return ENOTSUP; // can't send a Go Away message, either
+        return -ENOTSUP; // can't send a Go Away message, either
 
     if (!f.streamid)
         switch (f.type)
@@ -191,7 +137,7 @@ ssize_t yamux_session_read(struct yamux_session* session)
                 {
                     struct timespec now, dt, last = session->since_ping;
                     if (!timespec_get(&now, TIME_UTC))
-                        return EACCES;
+                        return -EACCES;
 
                     dt.tv_sec = now.tv_sec - last.tv_sec;
                     if (now.tv_nsec < last.tv_nsec)
@@ -205,7 +151,7 @@ ssize_t yamux_session_read(struct yamux_session* session)
                     session->pong_fn(session, dt);
                 }
                 else
-                    return EPROTO;
+                    return -EPROTO;
                 break;
             case yamux_frame_go_away:
                 session->closed = true;
@@ -213,7 +159,7 @@ ssize_t yamux_session_read(struct yamux_session* session)
                     session->go_away_fn(session, (enum yamux_error)f.length);
                 break;
             default:
-                return EPROTO;
+                return -EPROTO;
         }
     else
     {
@@ -233,8 +179,6 @@ ssize_t yamux_session_read(struct yamux_session* session)
 
                     if (s->rst_fn)
                         s->rst_fn(s);
-
-                    return 0;
                 }
                 else if (f.flags & yamux_frame_fin)
                 {
@@ -246,29 +190,26 @@ ssize_t yamux_session_read(struct yamux_session* session)
 
                     if (s->fin_fn)
                         s->fin_fn(s);
-
-                    return 0;
                 }
                 else if (f.flags & yamux_frame_ack)
                 {
                     if (s->state != yamux_stream_syn_sent)
-                        return EPROTO;
+                        return -EPROTO;
 
                     s->state = yamux_stream_est;
-
-                    return 0;
                 }
                 else if (f.flags)
-                    return EPROTO;
+                    return -EPROTO;
 
-                return yamux_stream_process(s, &f, session->sock);
+                ssize_t re = yamux_stream_process(s, &f, session->sock);
+                return (re < 0) ? re : (re + r);
             }
         }
 
         // stream doesn't exist yet
         if (f.flags & yamux_frame_syn)
         {
-            struct yamux_stream* st = yamux_new_stream(session, f.streamid);
+            struct yamux_stream* st = yamux_stream_new(session, f.streamid);
 
             if (session->new_stream_fn)
                 session->new_stream_fn(session, st);
@@ -276,7 +217,7 @@ ssize_t yamux_session_read(struct yamux_session* session)
             st->state = yamux_stream_syn_recv;
         }
         else
-            return EPROTO;
+            return -EPROTO;
     }
 
     return 0;
