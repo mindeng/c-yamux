@@ -27,8 +27,8 @@ struct yamux_session;
 struct yamux_stream;
 
 typedef void* (*yamux_session_get_str_ud_fn)(struct yamux_session* session, yamux_streamid newid       );
-typedef void  (*yamux_session_ping_fn      )(struct yamux_session* session                             );
-typedef void  (*yamux_session_pong_fn      )(struct yamux_session* session, struct timespec dt         );
+typedef void  (*yamux_session_ping_fn      )(struct yamux_session* session, uint32_t val               );
+typedef void  (*yamux_session_pong_fn      )(struct yamux_session* session, uint32_t val, struct timespec dt);
 typedef void  (*yamux_session_go_away_fn   )(struct yamux_session* session, enum yamux_error err       );
 typedef void  (*yamux_session_new_stream_fn)(struct yamux_session* session, struct yamux_stream* stream);
 

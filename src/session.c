@@ -70,7 +70,7 @@ void yamux_session_free(struct yamux_session* session)
 ssize_t yamux_session_close(struct yamux_session* session, enum yamux_error err)
 {
     if (!session)
-        return EINVAL;
+        return -EINVAL;
     if (session->closed)
         return 0;
 
@@ -90,7 +90,7 @@ ssize_t yamux_session_close(struct yamux_session* session, enum yamux_error err)
 ssize_t yamux_session_ping(struct yamux_session* session, uint32_t value, bool pong)
 {
     if (!session || session->closed)
-        return EINVAL;
+        return -EINVAL;
 
     struct yamux_frame f = (struct yamux_frame){
         .version  = YAMUX_VERSION,
@@ -101,7 +101,7 @@ ssize_t yamux_session_ping(struct yamux_session* session, uint32_t value, bool p
     };
 
     if (!timespec_get(&session->since_ping, TIME_UTC))
-        return EACCES;
+        return -EACCES;
 
     return send(session->sock, &f, sizeof(struct yamux_frame), 0);
 }
@@ -133,7 +133,7 @@ ssize_t yamux_session_read(struct yamux_session* session)
                     yamux_session_ping(session, f.length, true);
 
                     if (session->ping_fn)
-                        session->ping_fn(session);
+                        session->ping_fn(session, f.length);
                 }
                 else if ((f.flags & yamux_frame_ack) && session->pong_fn)
                 {
@@ -150,7 +150,7 @@ ssize_t yamux_session_read(struct yamux_session* session)
                     else
                         dt.tv_nsec = now.tv_nsec - last.tv_nsec;
 
-                    session->pong_fn(session, dt);
+                    session->pong_fn(session, f.length, dt);
                 }
                 else
                     return -EPROTO;
