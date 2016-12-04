@@ -34,6 +34,8 @@ struct yamux_stream
     yamux_stream_fin_fn  fin_fn ;
     yamux_stream_rst_fn  rst_fn ;
 
+    void* userdata;
+
     enum yamux_stream_state state;
 
     yamux_streamid id;
@@ -42,7 +44,7 @@ struct yamux_stream
 };
 
 // does not init the stream
-struct yamux_stream* yamux_stream_new(struct yamux_session* session, yamux_streamid id);
+struct yamux_stream* yamux_stream_new(struct yamux_session* session, yamux_streamid id, void* userdata);
 
 // not obligatory, SYN is sent by yamux_stream_write when the stream
 // isn't initialised anyway

@@ -88,7 +88,7 @@ int main(int argc, char* argv[])
 #else
             yamux_session_server
 #endif
-            );
+            , NULL);
     if (!sess)
     {
         printf("yamux_session_new() failed\n");

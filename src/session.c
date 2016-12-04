@@ -11,7 +11,7 @@
 
 static struct yamux_config dcfg = YAMUX_DEFAULT_CONFIG;
 
-struct yamux_session* yamux_session_new(struct yamux_config* config, int sock, enum yamux_session_type type)
+struct yamux_session* yamux_session_new(struct yamux_config* config, int sock, enum yamux_session_type type, void* userdata)
 {
     if (!sock)
         return NULL;
@@ -44,7 +44,9 @@ struct yamux_session* yamux_session_new(struct yamux_config* config, int sock, e
 
         .ping_fn    = NULL,
         .pong_fn    = NULL,
-        .go_away_fn = NULL
+        .go_away_fn = NULL,
+
+        .userdata = userdata
     };
 
     struct yamux_session* sess = (struct yamux_session*)malloc(sizeof(struct yamux_session));
@@ -209,7 +211,12 @@ ssize_t yamux_session_read(struct yamux_session* session)
         // stream doesn't exist yet
         if (f.flags & yamux_frame_syn)
         {
-            struct yamux_stream* st = yamux_stream_new(session, f.streamid);
+            void* ud = NULL;
+
+            if (session->get_str_ud_fn)
+                ud = session->get_str_ud_fn(session, f.streamid);
+
+            struct yamux_stream* st = yamux_stream_new(session, f.streamid, ud);
 
             if (session->new_stream_fn)
                 session->new_stream_fn(session, st);

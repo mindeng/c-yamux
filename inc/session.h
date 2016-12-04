@@ -26,10 +26,11 @@ enum yamux_error
 struct yamux_session;
 struct yamux_stream;
 
-typedef void (*yamux_session_ping_fn      )(struct yamux_session* session                             );
-typedef void (*yamux_session_pong_fn      )(struct yamux_session* session, struct timespec dt         );
-typedef void (*yamux_session_go_away_fn   )(struct yamux_session* session, enum yamux_error err       );
-typedef void (*yamux_session_new_stream_fn)(struct yamux_session* session, struct yamux_stream* stream);
+typedef void* (*yamux_session_get_str_ud_fn)(struct yamux_session* session, yamux_streamid newid       );
+typedef void  (*yamux_session_ping_fn      )(struct yamux_session* session                             );
+typedef void  (*yamux_session_pong_fn      )(struct yamux_session* session, struct timespec dt         );
+typedef void  (*yamux_session_go_away_fn   )(struct yamux_session* session, enum yamux_error err       );
+typedef void  (*yamux_session_new_stream_fn)(struct yamux_session* session, struct yamux_stream* stream);
 
 struct yamux_session_stream
 {
@@ -44,10 +45,13 @@ struct yamux_session
     size_t cap_streams;
     struct yamux_session_stream* streams;
 
+    yamux_session_get_str_ud_fn get_str_ud_fn;
     yamux_session_ping_fn       ping_fn      ;
     yamux_session_pong_fn       pong_fn      ;
     yamux_session_go_away_fn    go_away_fn   ;
     yamux_session_new_stream_fn new_stream_fn;
+
+    void* userdata;
 
     struct timespec since_ping;
 
@@ -60,7 +64,7 @@ struct yamux_session
     bool closed;
 };
 
-struct yamux_session* yamux_session_new (struct yamux_config* config, int sock, enum yamux_session_type type);
+struct yamux_session* yamux_session_new (struct yamux_config* config, int sock, enum yamux_session_type type, void* userdata);
 // does not close the socket, but does close the session
 void                  yamux_session_free(struct yamux_session* session);
 

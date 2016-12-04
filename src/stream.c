@@ -11,7 +11,7 @@
 #define MIN(x,y) (y^((x^y)&-(x<y)))
 #define MAX(x,y) (x^((x^y)&-(x<y)))
 
-struct yamux_stream* yamux_stream_new(struct yamux_session* session, yamux_streamid id)
+struct yamux_stream* yamux_stream_new(struct yamux_session* session, yamux_streamid id, void* userdata)
 {
     if (!session)
         return NULL;
@@ -61,7 +61,9 @@ FOUND:;
 
         .read_fn = NULL,
         .fin_fn  = NULL,
-        .rst_fn  = NULL
+        .rst_fn  = NULL,
+
+        .userdata = userdata
     };
     *st = nst;
 
