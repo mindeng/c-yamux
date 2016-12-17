@@ -213,6 +213,9 @@ void yamux_stream_free(struct yamux_stream* stream)
     if (!stream)
         return;
 
+    if (stream->free_fn)
+        stream->free_fn(stream);
+
     struct yamux_stream s = *stream;
 
     for (size_t i = 0; i < s.session->cap_streams; ++i)

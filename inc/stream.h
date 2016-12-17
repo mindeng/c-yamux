@@ -15,6 +15,7 @@ struct yamux_stream;
 typedef void (*yamux_stream_read_fn)(struct yamux_stream* stream, uint32_t data_length, void* data);
 typedef void (*yamux_stream_fin_fn )(struct yamux_stream* stream);
 typedef void (*yamux_stream_rst_fn )(struct yamux_stream* stream);
+typedef void (*yamux_stream_free_fn)(struct yamux_stream* stream);
 
 enum yamux_stream_state
 {
@@ -33,6 +34,7 @@ struct yamux_stream
     yamux_stream_read_fn read_fn;
     yamux_stream_fin_fn  fin_fn ;
     yamux_stream_rst_fn  rst_fn ;
+    yamux_stream_free_fn free_fn;
 
     void* userdata;
 

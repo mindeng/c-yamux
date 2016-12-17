@@ -42,9 +42,11 @@ struct yamux_session* yamux_session_new(struct yamux_config* config, int sock, e
 
         .since_ping = {.tv_sec = 0, .tv_nsec = 0 },
 
-        .ping_fn    = NULL,
-        .pong_fn    = NULL,
-        .go_away_fn = NULL,
+        .get_str_ud_fn = NULL,
+        .ping_fn       = NULL,
+        .pong_fn       = NULL,
+        .go_away_fn    = NULL,
+        .free_fn       = NULL,
 
         .userdata = userdata
     };
@@ -62,6 +64,9 @@ void yamux_session_free(struct yamux_session* session)
 
     if (!session->closed)
         yamux_session_close(session, yamux_error_normal);
+
+    if (session->free_fn)
+        session->free_fn(session);
 
     free(session->streams);
     free(session         );
