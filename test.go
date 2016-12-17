@@ -89,7 +89,7 @@ func client() {
 }
 
 func main() {
-	//serv()
-	client()
+	serv()
+    //client()
 }
 

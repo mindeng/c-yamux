@@ -232,6 +232,8 @@ void yamux_stream_free(struct yamux_stream* stream)
             break;
         }
     }
+
+    free(stream);
 }
 
 ssize_t yamux_stream_process(struct yamux_stream* stream, struct yamux_frame* frame, int sock)

@@ -68,6 +68,10 @@ void yamux_session_free(struct yamux_session* session)
     if (session->free_fn)
         session->free_fn(session);
 
+    for (size_t i = 0; i < session->cap_streams; ++i)
+        if (session->streams[i].alive)
+            yamux_stream_free(session->streams[i].stream);
+
     free(session->streams);
     free(session         );
 }
