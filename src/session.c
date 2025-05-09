@@ -93,6 +93,7 @@ ssize_t yamux_session_close(struct yamux_session* session, enum yamux_error err)
 
     session->closed = true;
 
+    encode_frame(&f);
     return send(session->sock, &f, sizeof(struct yamux_frame), 0);
 }
 
@@ -112,6 +113,7 @@ ssize_t yamux_session_ping(struct yamux_session* session, uint32_t value, bool p
     if (!timespec_get(&session->since_ping, TIME_UTC))
         return -EACCES;
 
+    encode_frame(&f);
     return send(session->sock, &f, sizeof(struct yamux_frame), 0);
 }
 
