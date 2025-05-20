@@ -246,6 +246,10 @@ ssize_t yamux_stream_write(struct yamux_stream *stream, uint32_t data_length,
       data += sent_len;
     } else {
       // 发送错误或部分发送，返回已发送的数据量或错误
+      // 返回未使用的窗口
+      pthread_mutex_lock(&stream->mutex);
+      stream->window_size += adv;
+      pthread_mutex_unlock(&stream->mutex);
       return total_sent_data > 0 ? total_sent_data : res;
     }
   }
