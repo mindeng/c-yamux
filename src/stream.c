@@ -203,18 +203,19 @@ ssize_t yamux_stream_write(struct yamux_stream *stream, uint32_t data_length,
   while (data < data_end) {
     pthread_mutex_lock(&stream->mutex);
     uint32_t current_window_size = stream->window_size;
-    pthread_mutex_unlock(&stream->mutex);
 
     if (current_window_size <= 0) {
       // 窗口大小不足，返回已发送的数据量，调用方应等待
+      pthread_mutex_unlock(&stream->mutex);
       return total_sent_data;
     }
 
     uint32_t dr = (uint32_t)(data_end - data);
     uint32_t adv = MIN(dr, current_window_size);
 
-    pthread_mutex_lock(
-        &stream->mutex); // 保护 get_flags 对 stream->state 的修改
+    // 预先扣除
+    stream->window_size -= adv;
+
     struct yamux_frame f = (struct yamux_frame){.version = YAMUX_VERSION,
                                                 .type = yamux_frame_data,
                                                 .flags = get_flags(stream),
@@ -222,22 +223,27 @@ ssize_t yamux_stream_write(struct yamux_stream *stream, uint32_t data_length,
                                                 .length = adv};
     pthread_mutex_unlock(&stream->mutex);
 
-    char sendd[adv + sizeof(struct yamux_frame)]; // VLA used here
+    const ssize_t frame_size = sizeof(struct yamux_frame);
+    char sendd[adv + frame_size]; // VLA used here
 
     encode_frame(&f);
-    memcpy(sendd, &f, sizeof(struct yamux_frame));
-    memcpy(sendd + sizeof(struct yamux_frame), data, (size_t)adv);
+    memcpy(sendd, &f, frame_size);
+    memcpy(sendd + frame_size, data, (size_t)adv);
 
-    ssize_t res = send(sock, sendd, adv + sizeof(struct yamux_frame), 0);
+    ssize_t res = send(sock, sendd, adv + frame_size, 0);
     if (res > 0) {
-      // 只有在成功发送数据后才更新窗口大小
-      pthread_mutex_lock(&stream->mutex);
-      // res 是发送的总字节数 (帧头 + 数据)，我们只从 window_size 中减去数据部分
-      stream->window_size -= adv;
-      pthread_mutex_unlock(&stream->mutex);
+      const ssize_t sent_len = res - frame_size;
+      if (sent_len > 0 && sent_len < adv) {
+        // 返回未使用的窗口
+        pthread_mutex_lock(&stream->mutex);
+        // res 是发送的总字节数 (帧头 + 数据)，我们只从 window_size
+        // 中减去数据部分
+        stream->window_size += adv - sent_len;
+        pthread_mutex_unlock(&stream->mutex);
+      }
 
-      total_sent_data += adv;
-      data += adv;
+      total_sent_data += sent_len;
+      data += sent_len;
     } else {
       // 发送错误或部分发送，返回已发送的数据量或错误
       return total_sent_data > 0 ? total_sent_data : res;
