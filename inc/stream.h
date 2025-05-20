@@ -1,10 +1,10 @@
-
 #ifndef YAMUX_STREAM_H
 #define YAMUX_STREAM_H
 
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <pthread.h> // 引入 pthread 库
 
 #include "session.h"
 
@@ -43,6 +43,9 @@ struct yamux_stream
     yamux_streamid id;
 
     uint32_t window_size;
+
+    pthread_mutex_t mutex; // 新增：用于保护 stream 状态和 window_size
+    pthread_cond_t cond;   // 新增：用于在 window_size 增长时发出信号
 };
 
 // does not init the stream
@@ -65,5 +68,7 @@ ssize_t yamux_stream_write(struct yamux_stream* stream, uint32_t data_length, vo
 
 ssize_t yamux_stream_process(struct yamux_stream* stream, struct yamux_frame* frame, int sock);
 
-#endif
+// 当 stream->window_size 为 0 时，等待其增长
+ssize_t yamux_stream_wait_for_window(struct yamux_stream* stream);
 
+#endif

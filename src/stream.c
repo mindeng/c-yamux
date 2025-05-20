@@ -1,6 +1,6 @@
-
 #include <errno.h>
 #include <memory.h>
+#include <pthread.h> // 引入 pthread 库
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -64,12 +64,34 @@ FOUND:;
                             .userdata = userdata};
   *st = nst;
 
+  // 初始化互斥锁和条件变量
+  if (pthread_mutex_init(&st->mutex, NULL) != 0) {
+    fprintf(stderr, "Error initializing mutex\n");
+    free(st);
+    ss->alive = false;      // Revert alive state if mutex init fails
+    session->cap_streams--; // Revert cap_streams if mutex init fails
+    return NULL;
+  }
+  if (pthread_cond_init(&st->cond, NULL) != 0) {
+    fprintf(stderr, "Error initializing condition variable\n");
+    pthread_mutex_destroy(&st->mutex); // Clean up mutex if cond init fails
+    free(st);
+    ss->alive = false;      // Revert alive state if cond init fails
+    session->cap_streams--; // Revert cap_streams if cond init fails
+    return NULL;
+  }
+
   return st;
 }
 
 ssize_t yamux_stream_init(struct yamux_stream *stream) {
-  if (!stream || stream->state != yamux_stream_inited ||
-      stream->session->closed) {
+  if (!stream || stream->session->closed) {
+    return -EINVAL;
+  }
+
+  pthread_mutex_lock(&stream->mutex);
+  if (stream->state != yamux_stream_inited) {
+    pthread_mutex_unlock(&stream->mutex);
     return -EINVAL;
   }
 
@@ -80,13 +102,21 @@ ssize_t yamux_stream_init(struct yamux_stream *stream) {
                                               .length = 0};
 
   stream->state = yamux_stream_syn_sent;
+  pthread_mutex_unlock(&stream->mutex);
 
   encode_frame(&f);
   return send(stream->session->sock, &f, sizeof(struct yamux_frame), 0);
 }
+
 ssize_t yamux_stream_close(struct yamux_stream *stream) {
-  if (!stream || stream->state != yamux_stream_est || stream->session->closed)
+  if (!stream || stream->session->closed)
     return -EINVAL;
+
+  pthread_mutex_lock(&stream->mutex);
+  if (stream->state != yamux_stream_est) {
+    pthread_mutex_unlock(&stream->mutex);
+    return -EINVAL;
+  }
 
   struct yamux_frame f = (struct yamux_frame){.version = YAMUX_VERSION,
                                               .type = yamux_frame_window_update,
@@ -95,14 +125,17 @@ ssize_t yamux_stream_close(struct yamux_stream *stream) {
                                               .length = 0};
 
   stream->state = yamux_stream_closing;
+  pthread_mutex_unlock(&stream->mutex);
 
   encode_frame(&f);
   return send(stream->session->sock, &f, sizeof(struct yamux_frame), 0);
 }
+
 ssize_t yamux_stream_reset(struct yamux_stream *stream) {
   if (!stream || stream->session->closed)
     return -EINVAL;
 
+  pthread_mutex_lock(&stream->mutex);
   struct yamux_frame f = (struct yamux_frame){.version = YAMUX_VERSION,
                                               .type = yamux_frame_window_update,
                                               .flags = yamux_frame_rst,
@@ -110,22 +143,29 @@ ssize_t yamux_stream_reset(struct yamux_stream *stream) {
                                               .length = 0};
 
   stream->state = yamux_stream_closed;
+  pthread_mutex_unlock(&stream->mutex);
 
   encode_frame(&f);
   return send(stream->session->sock, &f, sizeof(struct yamux_frame), 0);
 }
 
 static enum yamux_frame_flags get_flags(struct yamux_stream *stream) {
+  // 此函数在调用方加锁，因此不需要内部加锁
+  enum yamux_frame_flags flags = 0;
   switch (stream->state) {
   case yamux_stream_inited:
     stream->state = yamux_stream_syn_sent;
-    return yamux_frame_syn;
+    flags = yamux_frame_syn;
+    break;
   case yamux_stream_syn_recv:
     stream->state = yamux_stream_est;
-    return yamux_frame_ack;
+    flags = yamux_frame_ack;
+    break;
   default:
-    return 0;
+    flags = 0;
+    break;
   }
+  return flags;
 }
 
 ssize_t yamux_stream_window_update(struct yamux_stream *stream, int32_t delta) {
@@ -155,28 +195,34 @@ ssize_t yamux_stream_write(struct yamux_stream *stream, uint32_t data_length,
     return -EINVAL;
 
   char *data = (char *)data_;
-
   struct yamux_session *s = stream->session;
-
   int sock = s->sock;
-
   char *data_end = data + data_length;
-
-  uint32_t ws = stream->window_size;
-  if (ws <= 0) {
-    return 0;
-  }
-  yamux_streamid id = stream->id;
-  char sendd[ws + sizeof(struct yamux_frame)];
+  ssize_t total_sent_data = 0; // 记录实际发送的数据长度
 
   while (data < data_end) {
-    uint32_t dr = (uint32_t)(data_end - data), adv = MIN(dr, ws);
+    pthread_mutex_lock(&stream->mutex);
+    uint32_t current_window_size = stream->window_size;
+    pthread_mutex_unlock(&stream->mutex);
 
+    if (current_window_size <= 0) {
+      // 窗口大小不足，返回已发送的数据量，调用方应等待
+      return total_sent_data;
+    }
+
+    uint32_t dr = (uint32_t)(data_end - data);
+    uint32_t adv = MIN(dr, current_window_size);
+
+    pthread_mutex_lock(
+        &stream->mutex); // 保护 get_flags 对 stream->state 的修改
     struct yamux_frame f = (struct yamux_frame){.version = YAMUX_VERSION,
                                                 .type = yamux_frame_data,
                                                 .flags = get_flags(stream),
-                                                .streamid = id,
+                                                .streamid = stream->id,
                                                 .length = adv};
+    pthread_mutex_unlock(&stream->mutex);
+
+    char sendd[adv + sizeof(struct yamux_frame)]; // VLA used here
 
     encode_frame(&f);
     memcpy(sendd, &f, sizeof(struct yamux_frame));
@@ -184,16 +230,21 @@ ssize_t yamux_stream_write(struct yamux_stream *stream, uint32_t data_length,
 
     ssize_t res = send(sock, sendd, adv + sizeof(struct yamux_frame), 0);
     if (res > 0) {
+      // 只有在成功发送数据后才更新窗口大小
+      pthread_mutex_lock(&stream->mutex);
+      // res 是发送的总字节数 (帧头 + 数据)，我们只从 window_size 中减去数据部分
       stream->window_size -= adv;
-      return res;
-    } else {
-      return res;
-    }
+      pthread_mutex_unlock(&stream->mutex);
 
-    data += adv;
+      total_sent_data += adv;
+      data += adv;
+    } else {
+      // 发送错误或部分发送，返回已发送的数据量或错误
+      return total_sent_data > 0 ? total_sent_data : res;
+    }
   }
 
-  return data_end - (char *)data_;
+  return total_sent_data;
 }
 
 void yamux_stream_free(struct yamux_stream *stream) {
@@ -202,6 +253,10 @@ void yamux_stream_free(struct yamux_stream *stream) {
 
   if (stream->free_fn)
     stream->free_fn(stream);
+
+  // 销毁互斥锁和条件变量
+  pthread_mutex_destroy(&stream->mutex);
+  pthread_cond_destroy(&stream->cond);
 
   struct yamux_stream s = *stream;
 
@@ -227,24 +282,33 @@ ssize_t yamux_stream_process(struct yamux_stream *stream,
 
   switch (f.type) {
   case yamux_frame_data: {
-    char buf[f.length];
+    char buf[f.length]; // VLA used here
 
     ssize_t res = recv(sock, buf, (size_t)f.length, 0);
 
     if (res != (ssize_t)f.length)
-      return -1;
+      return -1; // Error or partial read
 
+    // read_fn 不修改 stream 状态，无需加锁
     if (stream->read_fn)
       stream->read_fn(stream, f.length, buf);
 
     return res;
   }
   case yamux_frame_window_update: {
+    pthread_mutex_lock(&stream->mutex);
+    uint32_t old_window_size = stream->window_size; // 记录旧的窗口大小
     uint64_t nws =
         (uint64_t)((int64_t)stream->window_size + (int64_t)(int32_t)f.length);
     nws &= 0xFFFFFFFFLL;
     stream->window_size = (uint32_t)nws;
     /* printf("new window_size: %lld\n", nws); */
+
+    // 如果窗口从0变为非0，则发出信号
+    if (old_window_size == 0 && stream->window_size > 0) {
+      pthread_cond_signal(&stream->cond);
+    }
+    pthread_mutex_unlock(&stream->mutex);
     break;
   }
   default:
@@ -252,4 +316,26 @@ ssize_t yamux_stream_process(struct yamux_stream *stream,
   }
 
   return 0;
+}
+
+// 当 stream->window_size 为 0 时，等待其增长
+ssize_t yamux_stream_wait_for_window(struct yamux_stream *stream) {
+  if (!stream) {
+    return -EINVAL;
+  }
+
+  pthread_mutex_lock(&stream->mutex);
+  // 使用 while 循环处理虚假唤醒 (spurious wakeups)
+  while (stream->window_size <= 0) {
+    // 如果流已经关闭，则不再等待
+    if (stream->state == yamux_stream_closed ||
+        stream->state == yamux_stream_closing) {
+      pthread_mutex_unlock(&stream->mutex);
+      return -EPIPE; // Broken pipe or stream closed
+    }
+    pthread_cond_wait(&stream->cond, &stream->mutex);
+  }
+  pthread_mutex_unlock(&stream->mutex);
+
+  return 0; // 窗口大小已大于 0
 }
